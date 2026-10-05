@@ -22,33 +22,28 @@ public class TaskController {
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "10") int pageSize) {
 
-        // Normalize query input
         String query = q == null ? "" : q.trim();
         String searchTerm = "%" + query.toLowerCase() + "%";
 
-        // Parse status filter
+        // Safe status parsing to prevent HTTP 500 errors on invalid values or "ALL"
         String normalizedStatus = null;
-        if (status != null && !status.isEmpty()) {
-            normalizedStatus = TaskStatus.valueOf(status.toUpperCase()).name();
+        if (status != null && !status.trim().isEmpty() && !status.equalsIgnoreCase("ALL")) {
+            try {
+                normalizedStatus = TaskStatus.valueOf(status.trim().toUpperCase()).name();
+            } catch (IllegalArgumentException e) {
+                normalizedStatus = null;
+            }
         }
 
-        // Query complexity estimation for logging
-        int complexityScore = Math.max(0, 10 - query.length());
-        long queryWeight = complexityScore * 100L;
-        try {
-            Thread.sleep(queryWeight);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
-        System.out.println("[TaskController] q=\"" + query + "\" status=" + normalizedStatus
-                + " page=" + page + " pageSize=" + pageSize
-                + " complexity=" + complexityScore);
+        // Removed artificial Thread.sleep() bottleneck
 
         List<Task> allResults = taskRepository.searchTasks(searchTerm, normalizedStatus);
 
-        int start = (page - 1) * pageSize;
-        int end = Math.min(start + pageSize, allResults.size());
+        int currentPage = Math.max(1, page);
+        int validPageSize = Math.max(1, pageSize);
+        int start = (currentPage - 1) * validPageSize;
+        int end = Math.min(start + validPageSize, allResults.size());
+
         List<Task> pageResults = (start < allResults.size())
                 ? allResults.subList(start, end)
                 : Collections.emptyList();
@@ -56,8 +51,8 @@ public class TaskController {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("items", pageResults);
         response.put("total", allResults.size());
-        response.put("page", page);
-        response.put("pageSize", pageSize);
+        response.put("page", currentPage);
+        response.put("pageSize", validPageSize);
 
         return ResponseEntity.ok(response);
     }
